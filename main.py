@@ -346,15 +346,15 @@ class LetAISendEmojisPlugin(Star):
                 local = cache_info.get("local_available", 0)
                 source = cache_info.get("source", "未知")
                 
-                info_text = f"""📊 表情包缓存信息:
+                info_text = f"""表情包缓存信息:
                 
-🗂️ 总计: {total} 个表情包
-📁 本地可用: {local} 个
-📊 下载率: {(local/total*100):.1f}% 
-🔗 数据源: {source}
-📄 缓存文件: emoji_cache.json
+总计: {total} 个表情包
+本地可用: {local} 个
+下载率: {(local/total*100):.1f}% 
+数据源: {source}
+缓存文件: emoji_cache.json
 
-💡 插件采用按需下载模式：
+插件采用按需下载模式：
 - 优先使用本地已下载的表情包
 - 找不到合适的时，从数据源搜索二次元表情包并立即下载
 - 按分类自动存储到本地目录
@@ -395,13 +395,13 @@ class LetAISendEmojisPlugin(Star):
     async def check_usage_history(self, event: AstrMessageEvent):
         """查看表情包使用历史"""
         if not self.recent_used_emojis:
-            return event.text_result("📋 表情包使用历史为空")
+            return event.text_result("表情包使用历史为空")
         
-        history_text = "📋 最近使用的表情包:\n\n"
+        history_text = "最近使用的表情包:\n\n"
         for i, emoji_id in enumerate(self.recent_used_emojis, 1):
             history_text += f"{i}. {emoji_id}\n"
         
-        history_text += f"\n💡 当前记录 {len(self.recent_used_emojis)}/{self.max_recent_history} 个，避免短期重复使用"
+        history_text += f"\n当前记录 {len(self.recent_used_emojis)}/{self.max_recent_history} 个，避免短期重复使用"
         
         return event.text_result(history_text)
     
@@ -437,18 +437,18 @@ class LetAISendEmojisPlugin(Star):
             if is_anime:
                 anime_count += 1
         
-        stats_text = f"""📊 表情包统计信息:
+        stats_text = f"""表情包统计信息:
 
-📦 总表情包数量: {total_count}
-📁 已下载到本地: {downloaded_count}
-🎌 二次元表情包: {anime_count}
-📋 使用历史记录: {len(self.recent_used_emojis)}/{self.max_recent_history}
+总表情包数量: {total_count}
+已下载到本地: {downloaded_count}
+二次元表情包: {anime_count}
+使用历史记录: {len(self.recent_used_emojis)}/{self.max_recent_history}
 
-💾 下载率: {(downloaded_count/total_count*100):.1f}%
-🎯 二次元占比: {(anime_count/total_count*100):.1f}%
-🔄 可下载数量: {total_count - downloaded_count}
+下载率: {(downloaded_count/total_count*100):.1f}%
+二次元占比: {(anime_count/total_count*100):.1f}%
+可下载数量: {total_count - downloaded_count}
 
-💡 策略说明:
+策略说明:
 - 30% 概率强制下载新表情包
 - 本地不足5个时强制下载
 - 优先选择未使用过的表情包"""
@@ -458,13 +458,13 @@ class LetAISendEmojisPlugin(Star):
     @filter.command("查看AI情感状态", "check_ai_mood")
     async def check_ai_mood(self, event: AstrMessageEvent):
         """查看AI当前的情感状态和对话上下文"""
-        mood_text = f"""🧠 AI情感状态报告:
+        mood_text = f"""AI情感状态报告:
         
-🎭 当前AI情绪: {self.current_ai_mood}
-📊 情绪一致性系数: {self.mood_consistency_factor}
-💬 对话上下文长度: {len(self.conversation_context)}/{self.max_context_length}
+当前AI情绪: {self.current_ai_mood}
+情绪一致性系数: {self.mood_consistency_factor}
+对话上下文长度: {len(self.conversation_context)}/{self.max_context_length}
 
-📝 最近对话记录:"""
+最近对话记录:"""
         
         if self.conversation_context:
             for i, ctx in enumerate(self.conversation_context[-3:], 1):  # 显示最近3条
@@ -647,37 +647,6 @@ class LetAISendEmojisPlugin(Star):
                     
         except Exception as e:
             logger.error(f"发送表情包失败: {selected_emoji.get('name')} - {e}")
-    
-    def extract_keywords_from_message(self, message: str):
-        if not message:
-            return []
-            
-        common_keywords = {
-            "吃": ["吃", "饿", "美食", "食物"],
-            "睡": ["睡", "困", "累", "休息"],
-            "玩": ["游戏", "玩", "娱乐", "开黑"],
-            "工作": ["工作", "上班", "学习", "忙"],
-            "哭": ["哭", "泪", "伤心", "难过"],
-            "笑": ["笑", "哈哈", "开心", "搞笑"],
-            "惊讶": ["惊", "震惊", "吃惊", "意外"],
-            "生气": ["气", "怒", "愤怒", "讨厌"],
-            "害羞": ["害羞", "脸红", "不好意思"],
-            "无语": ["无语", "无奈", "醉了", "服了"],
-            "666": ["666", "牛", "厉害", "强"],
-            "瑟瑟": ["瑟瑟", "怕怕", "害怕"],
-            "摸鱼": ["摸鱼", "划水", "偷懒"],
-        }
-        
-        extracted = []
-        message_lower = message.lower()
-        
-        for category, keywords in common_keywords.items():
-            for keyword in keywords:
-                if keyword in message_lower:
-                    extracted.append(category)
-                    break
-        
-        return extracted
     
     def analyze_ai_reply_emotion(self, ai_reply: str):
         """深度分析AI回复的情感和内容，返回精准的情感标签"""
@@ -1366,203 +1335,6 @@ class LetAISendEmojisPlugin(Star):
             return max(emotion_scores.items(), key=lambda x: x[1])[0]
         else:
             return "neutral"
-    
-    def generate_ai_response_mood(self, user_emotion: str, user_message: str):
-        """根据用户情感生成AI的回应情绪"""
-        
-        # 定义AI对不同用户情感的回应模式
-        response_patterns = {
-            "happy": [
-                {"emotion": "happy", "description": "AI也很开心", "keywords": ["开心", "笑", "高兴", "快乐"]},
-                {"emotion": "excited", "description": "AI被感染了，也很兴奋", "keywords": ["兴奋", "激动", "太棒了"]},
-                {"emotion": "cute", "description": "AI想和你一起开心", "keywords": ["可爱", "萌", "么么哒"]}
-            ],
-            "excited": [
-                {"emotion": "excited", "description": "AI也超级兴奋", "keywords": ["兴奋", "激动", "太棒了", "amazing"]},
-                {"emotion": "happy", "description": "AI为你高兴", "keywords": ["开心", "笑", "高兴"]},
-                {"emotion": "proud", "description": "AI为你感到骄傲", "keywords": ["自豪", "骄傲", "厉害"]}
-            ],
-            "sad": [
-                {"emotion": "comfort", "description": "AI想安慰你", "keywords": ["安慰", "抱抱", "没事的", "陪伴"]},
-                {"emotion": "concerned", "description": "AI很担心你", "keywords": ["担心", "关心", "照顾"]},
-                {"emotion": "gentle", "description": "AI想温柔对待你", "keywords": ["温柔", "轻柔", "小心"]}
-            ],
-            "angry": [
-                {"emotion": "understanding", "description": "AI理解你的愤怒", "keywords": ["理解", "支持", "站队"]},
-                {"emotion": "calm", "description": "AI想让你冷静下来", "keywords": ["冷静", "平静", "放松"]},
-                {"emotion": "protective", "description": "AI想保护你", "keywords": ["保护", "守护", "安全"]}
-            ],
-            "tired": [
-                {"emotion": "sleepy", "description": "AI也有点困了", "keywords": ["困", "累", "睡", "休息"]},
-                {"emotion": "caring", "description": "AI想让你好好休息", "keywords": ["休息", "睡觉", "放松"]},
-                {"emotion": "lazy", "description": "AI想和你一起摸鱼", "keywords": ["摸鱼", "偷懒", "躺平"]}
-            ],
-            "bored": [
-                {"emotion": "playful", "description": "AI想和你一起玩", "keywords": ["玩耍", "嬉戏", "有趣"]},
-                {"emotion": "curious", "description": "AI想找点有趣的事", "keywords": ["好奇", "有趣", "探索"]},
-                {"emotion": "mischievous", "description": "AI想搞点小恶作剧", "keywords": ["调皮", "恶作剧", "坏笑"]}
-            ],
-            "surprised": [
-                {"emotion": "surprised", "description": "AI也很惊讶", "keywords": ["惊", "震惊", "哇", "意外"]},
-                {"emotion": "curious", "description": "AI很好奇发生了什么", "keywords": ["好奇", "想知道", "有趣"]},
-                {"emotion": "excited", "description": "AI对惊喜很兴奋", "keywords": ["兴奋", "激动"]}
-            ],
-            "confused": [
-                {"emotion": "thinking", "description": "AI在思考你的问题", "keywords": ["思考", "想想", "琢磨"]},
-                {"emotion": "helpful", "description": "AI想帮你解答", "keywords": ["帮助", "解答", "支持"]},
-                {"emotion": "cute", "description": "AI觉得你很可爱", "keywords": ["可爱", "萌", "有趣"]}
-            ],
-            "food": [
-                {"emotion": "hungry", "description": "AI也饿了", "keywords": ["饿", "吃", "美食", "馋"]},
-                {"emotion": "excited", "description": "AI对美食很兴奋", "keywords": ["兴奋", "激动", "期待"]},
-                {"emotion": "caring", "description": "AI关心你有没有吃饱", "keywords": ["关心", "照顾", "温暖"]}
-            ],
-            "work": [
-                {"emotion": "supportive", "description": "AI想支持你", "keywords": ["支持", "加油", "努力"]},
-                {"emotion": "understanding", "description": "AI理解你的辛苦", "keywords": ["理解", "辛苦", "不容易"]},
-                {"emotion": "lazy", "description": "AI想和你一起摸鱼", "keywords": ["摸鱼", "偷懒", "休息"]}
-            ],
-            "game": [
-                {"emotion": "gaming", "description": "AI也想玩游戏", "keywords": ["游戏", "开黑", "上分"]},
-                {"emotion": "excited", "description": "AI对游戏很兴奋", "keywords": ["兴奋", "激动", "期待"]},
-                {"emotion": "competitive", "description": "AI的竞争心被激发了", "keywords": ["竞争", "挑战", "努力"]}
-            ],
-            "love": [
-                {"emotion": "shy", "description": "AI有点害羞", "keywords": ["害羞", "脸红", "不好意思"]},
-                {"emotion": "sweet", "description": "AI觉得很甜蜜", "keywords": ["甜蜜", "温暖", "幸福"]},
-                {"emotion": "excited", "description": "AI为你的爱情兴奋", "keywords": ["兴奋", "激动", "开心"]}
-            ],
-            "praise": [
-                {"emotion": "shy", "description": "AI被夸得害羞了", "keywords": ["害羞", "脸红", "不好意思"]},
-                {"emotion": "proud", "description": "AI很自豪", "keywords": ["自豪", "骄傲", "开心"]},
-                {"emotion": "grateful", "description": "AI很感激", "keywords": ["感谢", "感激", "温暖"]}
-            ],
-            "complain": [
-                {"emotion": "understanding", "description": "AI理解你的抱怨", "keywords": ["理解", "支持", "同感"]},
-                {"emotion": "comfort", "description": "AI想安慰你", "keywords": ["安慰", "抱抱", "没事"]},
-                {"emotion": "angry", "description": "AI也为你感到不公", "keywords": ["愤怒", "不公", "支持"]}
-            ]
-        }
-        
-        # 默认回应（对于中性或未匹配的情感）
-        default_responses = [
-            {"emotion": "curious", "description": "AI很好奇", "keywords": ["好奇", "有趣", "想知道"]},
-            {"emotion": "friendly", "description": "AI很友好", "keywords": ["友好", "亲切", "温暖"]},
-            {"emotion": "thinking", "description": "AI在思考", "keywords": ["思考", "想想", "琢磨"]},
-            {"emotion": "cute", "description": "AI想卖个萌", "keywords": ["可爱", "萌", "么么哒"]}
-        ]
-        
-        # 根据用户情感选择AI回应
-        possible_responses = response_patterns.get(user_emotion, default_responses)
-        
-        return random.choice(possible_responses)
-    
-    def generate_ai_mood(self):
-        """生成AI的随机情绪状态"""
-        ai_moods = [
-            # 开心系列
-            {"emotion": "happy", "description": "AI很开心，想分享快乐", "keywords": ["开心", "笑", "高兴", "快乐", "哈哈", "爱了"]},
-            {"emotion": "excited", "description": "AI很兴奋", "keywords": ["兴奋", "激动", "太棒了", "amazing", "wow"]},
-            {"emotion": "cute", "description": "AI想卖萌", "keywords": ["可爱", "萌", "么么哒", "mua", "kawaii"]},
-            
-            # 调皮系列
-            {"emotion": "mischievous", "description": "AI想恶作剧", "keywords": ["坏笑", "嘿嘿", "调皮", "恶作剧", "偷笑"]},
-            {"emotion": "playful", "description": "AI很顽皮", "keywords": ["玩耍", "嬉戏", "闹腾", "活泼"]},
-            
-            # 日常系列
-            {"emotion": "sleepy", "description": "AI有点困了", "keywords": ["困", "累", "睡", "打哈欠", "休息"]},
-            {"emotion": "lazy", "description": "AI想摸鱼", "keywords": ["摸鱼", "偷懒", "划水", "躺平", "咸鱼"]},
-            {"emotion": "hungry", "description": "AI想吃东西", "keywords": ["饿", "吃", "美食", "好饿", "馋"]},
-            
-            # 情绪系列
-            {"emotion": "curious", "description": "AI很好奇", "keywords": ["好奇", "疑问", "想知道", "有趣"]},
-            {"emotion": "thinking", "description": "AI在思考", "keywords": ["思考", "想想", "嗯", "让我想想"]},
-            {"emotion": "surprised", "description": "AI很惊讶", "keywords": ["惊", "震惊", "哇", "意外", "没想到"]},
-            {"emotion": "bored", "description": "AI有点无聊", "keywords": ["无聊", "发呆", "闲", "emmm"]},
-            
-            # 社交系列
-            {"emotion": "shy", "description": "AI有点害羞", "keywords": ["害羞", "脸红", "不好意思", "羞涩"]},
-            {"emotion": "proud", "description": "AI很自豪", "keywords": ["自豪", "骄傲", "厉害", "棒棒的"]},
-            {"emotion": "watching", "description": "AI在吃瓜围观", "keywords": ["吃瓜", "围观", "看戏", "有瓜吃"]},
-            
-            # 特殊系列
-            {"emotion": "anime_love", "description": "AI想看动漫", "keywords": ["二次元", "动漫", "番剧", "追番"]},
-            {"emotion": "gaming", "description": "AI想玩游戏", "keywords": ["游戏", "开黑", "上分", "玩游戏"]},
-            {"emotion": "philosophical", "description": "AI在思考人生", "keywords": ["人生", "哲学", "思考", "深度"]}
-        ]
-        
-        return random.choice(ai_moods)
-    
-    async def send_ai_emotion_emoji(self, event: AstrMessageEvent, ai_mood: dict):
-        """根据AI的情绪发送相应的表情包"""
-        if not self.emoji_data:
-            logger.warning("表情包数据为空，无法发送表情包")
-            return None
-            
-        try:
-            # 获取二次元表情包
-            anime_categories = self.get_anime_categories()
-            
-            # 根据AI情绪选择表情包
-            emotion = ai_mood["emotion"]
-            keywords = ai_mood["keywords"]
-            
-            # 优先匹配：二次元 + 情绪关键词
-            anime_emotion_matched = []
-            # 次优匹配：仅情绪关键词
-            emotion_matched = []
-            # 备选匹配：二次元表情包
-            anime_matched = []
-            
-            for emoji in self.emoji_data:
-                emoji_name = emoji.get("name", "").lower()
-                emoji_category = emoji.get("category", "").lower()
-                
-                # 检查是否为二次元表情包
-                is_anime = any(anime_key.lower() in emoji_category or 
-                              anime_key.lower() in emoji_name for anime_key in anime_categories)
-                
-                # 检查情绪关键词匹配
-                emotion_match = any(keyword in emoji_name or keyword in emoji_category for keyword in keywords)
-                
-                # 分类存储
-                if is_anime and emotion_match:
-                    anime_emotion_matched.append(emoji)
-                elif emotion_match:
-                    emotion_matched.append(emoji)
-                elif is_anime:
-                    anime_matched.append(emoji)
-            
-            # 按优先级选择表情包
-            selected_emoji = None
-            selection_type = ""
-            
-            if anime_emotion_matched:
-                selected_emoji = random.choice(anime_emotion_matched)
-                selection_type = "二次元+情绪匹配"
-            elif emotion_matched:
-                selected_emoji = random.choice(emotion_matched)
-                selection_type = "情绪匹配"
-            elif anime_matched:
-                selected_emoji = random.choice(anime_matched)
-                selection_type = "二次元随机"
-            else:
-                # 最后随机选择
-                selected_emoji = random.choice(self.emoji_data)
-                selection_type = "完全随机"
-            
-            if selected_emoji:
-                emoji_url = selected_emoji.get("url")
-                if emoji_url:
-                    logger.info(f"AI情绪表达: {ai_mood['description']} | 选择方式: {selection_type} | 表情包: {selected_emoji.get('name', '未知')}")
-                    return event.image_result(Image(url=emoji_url))
-                else:
-                    logger.warning("表情包URL为空")
-                    
-        except Exception as e:
-            logger.error(f"AI发送情绪表情包时出错: {e}")
-        
-        return None
     
     def add_to_recent_used(self, emoji):
         """添加表情包到最近使用记录"""
