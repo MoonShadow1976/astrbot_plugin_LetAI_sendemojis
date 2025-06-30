@@ -9,6 +9,8 @@ import os
 import random
 import aiohttp
 import asyncio
+import re
+import time
 
 @register("letai_sendemojis", "Heyh520", "让AI智能发送表情包的AstrBot插件", "1.0.0")
 class LetAISendEmojisPlugin(Star):
@@ -37,6 +39,12 @@ class LetAISendEmojisPlugin(Star):
         # 添加表情包使用历史记录，避免短期重复
         self.recent_used_emojis = []  # 存储最近使用的表情包
         self.max_recent_history = 10  # 最多记录最近10个使用的表情包
+        
+        # 上下文情感记忆系统
+        self.conversation_context = []  # 存储对话上下文
+        self.max_context_length = 5  # 记住最近5轮对话
+        self.current_ai_mood = "neutral"  # AI当前情绪状态
+        self.mood_consistency_factor = 0.7  # 情绪一致性系数
         
         logger.info(f"LetAI表情包插件初始化完成 - 配置: enable_context_parsing={self.enable_context_parsing}, send_probability={self.send_probability}")
         logger.info(f"表情包数据源: {self.emoji_source}")
@@ -447,6 +455,95 @@ class LetAISendEmojisPlugin(Star):
         
         return event.text_result(stats_text)
     
+    @filter.command("查看AI情感状态", "check_ai_mood")
+    async def check_ai_mood(self, event: AstrMessageEvent):
+        """查看AI当前的情感状态和对话上下文"""
+        mood_text = f"""🧠 AI情感状态报告:
+        
+🎭 当前AI情绪: {self.current_ai_mood}
+📊 情绪一致性系数: {self.mood_consistency_factor}
+💬 对话上下文长度: {len(self.conversation_context)}/{self.max_context_length}
+
+📝 最近对话记录:"""
+        
+        if self.conversation_context:
+            for i, ctx in enumerate(self.conversation_context[-3:], 1):  # 显示最近3条
+                time_str = time.strftime("%H:%M:%S", time.localtime(ctx["timestamp"]))
+                mood_text += f"""
+{i}. [{time_str}] 用户:{ctx['user_emotion']} → AI:{ctx['ai_emotion']}
+   回复: {ctx['ai_reply_sample']}"""
+        else:
+            mood_text += "\n   暂无对话记录"
+        
+        mood_text += f"""
+
+🎯 发送概率: {self.send_probability}
+📈 智能调节: 根据情感强度、对话长度、时间间隔等因素动态调整
+
+💡 AI情感特点:
+- 保持70%情绪连贯性，避免情感跳跃过大
+- 高情感强度时增加表情包发送概率
+- 短时间内避免重复发送
+- 根据用户情感进行智能响应"""
+        
+        return event.text_result(mood_text)
+    
+    @filter.command("重置AI情感", "reset_ai_mood")
+    async def reset_ai_mood(self, event: AstrMessageEvent):
+        """重置AI的情感状态和对话上下文"""
+        old_mood = self.current_ai_mood
+        old_context_len = len(self.conversation_context)
+        
+        self.current_ai_mood = "neutral"
+        self.conversation_context.clear()
+        
+        logger.info("AI情感状态已重置")
+        return event.text_result(f"""🔄 AI情感状态重置完成:
+
+📊 重置前状态:
+   - AI情绪: {old_mood}
+   - 对话上下文: {old_context_len}条记录
+
+📊 重置后状态:
+   - AI情绪: {self.current_ai_mood}
+   - 对话上下文: 已清空
+
+🎭 AI现在将以全新的中性情绪开始对话""")
+    
+    @filter.command("调整情感一致性", "adjust_mood_consistency")
+    async def adjust_mood_consistency(self, event: AstrMessageEvent):
+        """调整AI情感一致性系数"""
+        args = event.get_message().get_plain_text().split()
+        if len(args) < 2:
+            return event.text_result(f"""💡 当前情感一致性系数: {self.mood_consistency_factor}
+
+🔧 使用方法: 调整情感一致性 <数值>
+   数值范围: 0.1-1.0
+   - 0.1: 情感变化很快，更随性
+   - 0.5: 平衡状态
+   - 1.0: 情感非常稳定，很少变化
+
+示例: 调整情感一致性 0.8""")
+        
+        try:
+            new_factor = float(args[1])
+            if 0.1 <= new_factor <= 1.0:
+                old_factor = self.mood_consistency_factor
+                self.mood_consistency_factor = new_factor
+                logger.info(f"情感一致性系数调整: {old_factor} -> {new_factor}")
+                return event.text_result(f"""✅ 情感一致性系数调整成功:
+
+📊 调整详情:
+   - 原数值: {old_factor}
+   - 新数值: {new_factor}
+
+🎭 效果说明:
+   {'AI情感会更加稳定，较少出现突然的情感变化' if new_factor > 0.7 else 'AI情感会更加活跃，容易根据对话内容变化' if new_factor < 0.5 else 'AI情感保持平衡状态'}""")
+            else:
+                return event.text_result("❌ 数值超出范围，请输入0.1-1.0之间的数值")
+        except ValueError:
+            return event.text_result("❌ 请输入有效的数字")
+    
     async def download_single_emoji(self, emoji):
         """立即下载单个表情包"""
         local_path = emoji.get("local_path")
@@ -509,9 +606,20 @@ class LetAISendEmojisPlugin(Star):
         if not ai_reply_text.strip():
             return
             
+        # 分析用户和AI的情感，并更新上下文
+        # 获取用户消息
+        user_message = event.get_message_str() if hasattr(event, 'get_message_str') else (event.message_str if hasattr(event, 'message_str') else "")
+        
+        user_emotion = self.analyze_user_emotion(user_message)
         ai_emotion = self.analyze_ai_reply_emotion(ai_reply_text)
         
-        if random.random() < self.send_probability:
+        # 更新对话上下文和AI情绪状态
+        self.update_conversation_context(user_emotion, ai_emotion, ai_reply_text)
+        
+        # 智能决定是否发送表情包（基于情感强度和上下文）
+        should_send_emoji = self.should_send_emoji_intelligent(user_emotion, ai_emotion, ai_reply_text)
+        
+        if should_send_emoji:
             selected_emoji = await self.search_emoji_by_emotion(ai_emotion, ai_reply_text)
             
             if selected_emoji:
@@ -770,8 +878,8 @@ class LetAISendEmojisPlugin(Star):
         primary_keywords = mapping["primary"]
         secondary_keywords = mapping["secondary"]
         
-        # 增加多样性策略：有30%概率跳过本地搜索，直接在线下载新表情包
-        force_download = random.random() < 0.3
+        # 增加多样性策略：有40%概率跳过本地搜索，直接在线下载新表情包（提高获取更多动漫表情包的机会）
+        force_download = random.random() < 0.4
         
         if not force_download:
             # 第一步：在已下载的本地文件中搜索（优先二次元）
@@ -800,9 +908,8 @@ class LetAISendEmojisPlugin(Star):
             emoji_name = emoji.get("name", "").lower()
             emoji_category = emoji.get("category", "").lower()
             
-            # 检查是否为二次元表情包
-            is_anime = any(anime_key.lower() in emoji_category or 
-                          anime_key.lower() in emoji_name for anime_key in anime_categories)
+            # 检查是否为二次元表情包（更智能的匹配算法）
+            is_anime = self.is_anime_emoji(emoji_name, emoji_category, anime_categories)
             
             # 检查关键词匹配（更智能的匹配逻辑）
             search_text = f"{emoji_name} {emoji_category}".lower()
@@ -818,22 +925,25 @@ class LetAISendEmojisPlugin(Star):
             emotion_enhanced_match = any(emotion in primary_keywords + secondary_keywords 
                                        for emotion in name_emotions)
             
-            # 分类存储（优先二次元）
+            # 分类存储（优先二次元，二次元表情包有多重优先级）
             if is_anime and (primary_match or emotion_enhanced_match):
-                local_perfect.append(emoji)
+                # 二次元+完美匹配，添加多次增加权重
+                local_perfect.extend([emoji] * 3)  # 增加3倍权重
             elif is_anime and secondary_match:
-                local_good.append(emoji)
+                # 二次元+良好匹配，添加2次增加权重
+                local_good.extend([emoji] * 2)
             elif is_anime:
-                local_anime.append(emoji)
+                # 纯二次元表情包，添加1.5倍权重
+                local_anime.extend([emoji] * 2)
             elif primary_match or secondary_match or emotion_enhanced_match:
                 local_other.append(emoji)
         
         # 按优先级返回本地表情包，并过滤最近使用过的
         all_local_candidates = local_perfect + local_good + local_anime + local_other
         
-        # 如果本地可选表情包太少（少于5个），返回None强制在线下载
-        if len(all_local_candidates) < 5:
-            logger.info(f"本地表情包数量不足({len(all_local_candidates)}<5)，强制在线下载新表情包")
+        # 如果本地可选表情包太少（少于8个），返回None强制在线下载（提高阈值，增加在线下载频率）
+        if len(all_local_candidates) < 8:
+            logger.info(f"本地表情包数量不足({len(all_local_candidates)}<8)，强制在线下载新表情包")
             return None
         
         selected = None
@@ -880,14 +990,22 @@ class LetAISendEmojisPlugin(Star):
         anime_good = []     # 二次元+次要关键词  
         anime_all = []      # 所有二次元表情包
         
+        logger.info(f"开始搜索二次元表情包，总数据量: {len(self.emoji_data)}")
+        
         # 只搜索二次元表情包，且排除已下载的
+        checked_count = 0
+        anime_count = 0
         for emoji in self.emoji_data:
             emoji_name = emoji.get("name", "").lower()
             emoji_category = emoji.get("category", "").lower()
             
-            # 检查是否为二次元表情包
-            is_anime = any(anime_key.lower() in emoji_category or 
-                          anime_key.lower() in emoji_name for anime_key in anime_categories)
+            checked_count += 1
+            
+            # 检查是否为二次元表情包（更智能的匹配算法）
+            is_anime = self.is_anime_emoji(emoji_name, emoji_category, anime_categories)
+            
+            if is_anime:
+                anime_count += 1
             
             if not is_anime:
                 continue  # 只处理二次元表情包
@@ -915,6 +1033,8 @@ class LetAISendEmojisPlugin(Star):
             else:
                 anime_all.append(emoji)
         
+        logger.info(f"表情包筛选结果: 总检查{checked_count}个, 识别为动漫{anime_count}个, 完美匹配{len(anime_perfect)}个, 良好匹配{len(anime_good)}个, 随机池{len(anime_all)}个")
+        
         # 按优先级选择并下载表情包，过滤最近使用的
         candidates = []
         match_type = ""
@@ -927,7 +1047,7 @@ class LetAISendEmojisPlugin(Star):
             match_type = f"良好匹配二次元+相关主题"
         elif anime_all:
             # 从所有二次元表情包中选择一部分，然后过滤最近使用的
-            sample_size = min(30, len(anime_all))  # 增加样本大小提高多样性
+            sample_size = min(50, len(anime_all))  # 进一步增加样本大小提高多样性
             sampled = random.sample(anime_all, sample_size)
             candidates = self.filter_recently_used(sampled)
             match_type = "随机二次元表情包"
@@ -947,8 +1067,51 @@ class LetAISendEmojisPlugin(Star):
                 logger.warning(f"按需下载失败: {selected.get('name')}")
                 return None
         else:
-            logger.warning("未找到合适的二次元表情包")
+            # 如果严格的动漫搜索没有结果，使用宽松的随机选择作为后备
+            logger.warning("严格的二次元表情包搜索无结果，启用后备模式")
+            return await self.fallback_emoji_selection()
+    
+    async def fallback_emoji_selection(self):
+        """后备表情包选择方法：从所有表情包中随机选择"""
+        if not self.emoji_data:
             return None
+            
+        # 获取所有未下载的表情包
+        available_emojis = []
+        for emoji in self.emoji_data:
+            local_path = emoji.get("local_path")
+            if not local_path or not os.path.exists(local_path):
+                available_emojis.append(emoji)
+        
+        if not available_emojis:
+            # 如果所有表情包都已下载，从所有表情包中选择
+            available_emojis = self.emoji_data.copy()
+        
+        # 从可用表情包中随机选择一个，过滤最近使用的
+        candidates = self.filter_recently_used(available_emojis)
+        if not candidates:
+            candidates = available_emojis  # 如果过滤后为空，使用全部
+        
+        # 随机选择
+        if candidates:
+            # 增加随机性：从候选中随机选择10-20个，再从中选择一个
+            sample_size = min(20, len(candidates))
+            sampled_candidates = random.sample(candidates, sample_size) if len(candidates) > sample_size else candidates
+            selected = random.choice(sampled_candidates)
+            
+            logger.info(f"后备模式选择表情包: {selected.get('name')} (来自{len(candidates)}个候选)")
+            
+            # 尝试下载
+            download_success = await self.download_single_emoji(selected)
+            if download_success:
+                self.add_to_recent_used(selected)
+                logger.info(f"后备模式下载成功: {selected.get('name')}")
+                return selected
+            else:
+                logger.warning(f"后备模式下载失败: {selected.get('name')}")
+                return None
+        
+        return None
     
     def extract_emotion_from_filename(self, filename):
         """从文件名中提取情感关键词"""
@@ -985,6 +1148,188 @@ class LetAISendEmojisPlugin(Star):
                     break  # 每种情感类型只添加一次
         
         return extracted_emotions
+    
+    def is_anime_emoji(self, emoji_name, emoji_category, anime_categories):
+        """智能判断是否为动漫表情包（宽松模式，适配ChineseBQB数据源）"""
+        if not emoji_name and not emoji_category:
+            return False
+            
+        emoji_name_lower = emoji_name.lower() if emoji_name else ""
+        emoji_category_lower = emoji_category.lower() if emoji_category else ""
+        
+        # 创建搜索文本
+        search_text = f"{emoji_name_lower} {emoji_category_lower}"
+        
+        # 1. 直接关键词匹配（权重最高）
+        for anime_key in anime_categories:
+            anime_key_lower = anime_key.lower()
+            if anime_key_lower in search_text:
+                return True
+        
+        # 2. 宽松的动漫特征匹配（降低门槛）
+        anime_patterns = [
+            # 日文特征
+            r'[\u3040-\u309f\u30a0-\u30ff]',  # 平假名和片假名
+            # 常见动漫表情包描述词（宽松匹配）
+            r'(萌|可爱|kawaii|moe|二次元|动漫|anime|卡通|漫画)',
+            # 常见动漫角色特征
+            r'(酱|君|chan|kun|sama|小)',
+            # 表情特征
+            r'(表情|脸|face|emoji)',
+            # 可爱相关
+            r'(cute|sweet|lovely|pretty)',
+        ]
+        
+        for pattern in anime_patterns:
+            if re.search(pattern, search_text, re.IGNORECASE):
+                return True
+        
+        # 3. ChineseBQB数据源特殊适配
+        # 很多ChineseBQB的表情包没有明确的动漫分类，但名称中包含动漫特征
+        chinese_anime_indicators = [
+            "小", "大", "呆", "萌", "乖", "软", "甜", "纯", "真", "美", "帅", "靓",
+            "猫", "兔", "熊", "狗", "鸟", "龙", "虎", "狼", "fox", "cat", "dog", "bear",
+            "girl", "boy", "lady", "man", "child", "baby", "kid"
+        ]
+        
+        # 如果包含这些特征，有更高概率是可爱/动漫风格的表情包
+        has_chinese_indicators = any(indicator in search_text for indicator in chinese_anime_indicators)
+        
+        # 4. 文件名模式判断（很多动漫表情包都有特定的命名模式）
+        filename_patterns = [
+            r'\d+',  # 包含数字（很多动漫表情包集合都有编号）
+            r'[a-zA-Z]{2,}',  # 包含英文单词
+            r'[\u4e00-\u9fff]{1,3}',  # 包含1-3个中文字符
+        ]
+        
+        pattern_matches = sum(1 for pattern in filename_patterns if re.search(pattern, search_text))
+        
+        # 5. 综合判断逻辑（降低门槛，增加包容性）
+        if has_chinese_indicators and pattern_matches >= 1:
+            return True
+            
+        # 6. 如果表情包分类为空或很简单，大概率是来自动漫表情包库
+        if not emoji_category_lower or len(emoji_category_lower) <= 3:
+            # 对于简单分类，降低判断门槛
+            simple_anime_words = ["萌", "可爱", "小", "软", "sweet", "cute", "girl", "boy"]
+            if any(word in search_text for word in simple_anime_words):
+                return True
+        
+        # 7. 最后的宽松判断：如果包含表情相关的词汇，也视为潜在的动漫表情包
+        emotion_related = ["笑", "哭", "怒", "惊", "喜", "悲", "爱", "恨", "开心", "难过", "生气", "害怕"]
+        if any(emotion in search_text for emotion in emotion_related):
+            return True
+        
+        return False
+    
+    def update_conversation_context(self, user_emotion, ai_emotion, ai_reply_text):
+        """更新对话上下文和AI情绪状态"""
+        
+        # 添加新的对话记录
+        context_entry = {
+            "timestamp": time.time(),
+            "user_emotion": user_emotion,
+            "ai_emotion": ai_emotion,
+            "ai_reply_length": len(ai_reply_text),
+            "ai_reply_sample": ai_reply_text[:50] + "..." if len(ai_reply_text) > 50 else ai_reply_text
+        }
+        
+        self.conversation_context.append(context_entry)
+        
+        # 保持上下文长度限制
+        if len(self.conversation_context) > self.max_context_length:
+            self.conversation_context.pop(0)
+        
+        # 更新AI情绪状态（考虑情绪一致性）
+        if random.random() < self.mood_consistency_factor:
+            # 保持情绪连贯性
+            self.current_ai_mood = self.blend_emotions(self.current_ai_mood, ai_emotion)
+        else:
+            # 偶尔允许情绪突变
+            self.current_ai_mood = ai_emotion
+        
+        logger.debug(f"上下文更新: 用户情感={user_emotion}, AI情感={ai_emotion}, 当前AI情绪={self.current_ai_mood}")
+    
+    def blend_emotions(self, current_mood, new_emotion):
+        """融合当前情绪和新情感，保持连贯性"""
+        # 定义情感相容性矩阵
+        emotion_compatibility = {
+            "happy_excited": ["friendly_warm", "cute_playful", "encouraging"],
+            "friendly_warm": ["happy_excited", "caring_gentle", "grateful"],
+            "cute_playful": ["happy_excited", "surprised_curious", "mischievous"],
+            "caring_gentle": ["friendly_warm", "apologetic", "thinking_wise"],
+            "thinking_wise": ["caring_gentle", "confused", "curious"],
+            "surprised_curious": ["cute_playful", "excited", "thinking_wise"],
+            "encouraging": ["happy_excited", "friendly_warm", "supportive"],
+            "food_related": ["happy_excited", "cute_playful", "satisfied"],
+            "sleep_tired": ["caring_gentle", "lazy", "peaceful"],
+            "work_study": ["thinking_wise", "encouraging", "focused"],
+            "gaming": ["happy_excited", "competitive", "focused"],
+            "apologetic": ["caring_gentle", "shy", "humble"],
+            "confused": ["thinking_wise", "curious", "helpless"],
+            "grateful": ["friendly_warm", "happy_excited", "warm"]
+        }
+        
+        # 如果新情感与当前情绪兼容，使用新情感
+        if current_mood in emotion_compatibility:
+            compatible_emotions = emotion_compatibility[current_mood]
+            if new_emotion in compatible_emotions:
+                return new_emotion
+        
+        # 否则保持当前情绪或渐进过渡
+        transition_emotions = {
+            "happy_excited": "friendly_warm",
+            "sad": "caring_gentle", 
+            "angry": "confused",
+            "excited": "happy_excited"
+        }
+        
+        return transition_emotions.get(new_emotion, current_mood)
+    
+    def should_send_emoji_intelligent(self, user_emotion, ai_emotion, ai_reply_text):
+        """智能判断是否应该发送表情包"""
+        base_probability = self.send_probability
+        
+        # 情感强度加成
+        high_emotion_intensity = [
+            "happy_excited", "surprised_curious", "cute_playful", 
+            "food_related", "gaming", "encouraging"
+        ]
+        
+        if ai_emotion in high_emotion_intensity:
+            base_probability += 0.2  # 高情感强度增加20%概率
+        
+        # 用户情感回应加成
+        user_high_emotions = ["happy", "excited", "surprised", "food", "game"]
+        if user_emotion in user_high_emotions:
+            base_probability += 0.15  # 用户高情感增加15%概率
+        
+        # 对话长度影响
+        if len(ai_reply_text) < 30:
+            base_probability += 0.1  # 短回复更可能用表情包
+        elif len(ai_reply_text) > 100:
+            base_probability -= 0.1  # 长回复减少表情包概率
+        
+        # 上下文连贯性检查
+        if len(self.conversation_context) >= 2:
+            recent_emotions = [ctx["ai_emotion"] for ctx in self.conversation_context[-2:]]
+            if all(emotion == ai_emotion for emotion in recent_emotions):
+                base_probability -= 0.1  # 情感过于重复，降低概率
+        
+        # 时间间隔检查（避免频繁发送）
+        if len(self.conversation_context) >= 2:
+            last_timestamp = self.conversation_context[-2]["timestamp"]
+            current_time = time.time()
+            if current_time - last_timestamp < 30:  # 30秒内
+                base_probability -= 0.15  # 降低频繁发送概率
+        
+        # 确保概率在合理范围内
+        final_probability = max(0.05, min(0.8, base_probability))
+        
+        decision = random.random() < final_probability
+        logger.info(f"表情包发送决策: 基础概率={self.send_probability:.2f}, 调整后概率={final_probability:.2f}, 决定={'发送' if decision else '不发送'}")
+        
+        return decision
     
     def analyze_user_emotion(self, message: str):
         """分析用户消息的情感"""
@@ -1263,48 +1608,77 @@ class LetAISendEmojisPlugin(Star):
         return [
             # 通用关键词
             "可爱的女孩纸", "可爱的男孩纸", "萌妹", "二次元", "动漫", "少女", "少年",
-            "CuteGirl", "CuteBoy", "anime", "kawaii", "moe", "waifu",
+            "CuteGirl", "CuteBoy", "anime", "kawaii", "moe", "waifu", "萌萌哒", "二次元少女", "动漫女孩",
             
             # 经典动漫角色和作品
-            "乌沙奇", "兔兔", "哆啦a梦", "多啦a梦", "机器猫", "小叮当", "doraemon",
-            "柯南", "名侦探柯南", "conan", "毛利兰", "灰原哀",
-            "皮卡丘", "宠物小精灵", "神奇宝贝", "pokemon", "精灵宝可梦",
-            "火影忍者", "鸣人", "佐助", "小樱", "naruto",
-            "海贼王", "路飞", "索隆", "娜美", "one piece",
-            "龙珠", "悟空", "贝吉塔", "dragon ball",
-            "美少女战士", "sailor moon", "月野兔",
-            "铁臂阿童木", "astro boy",
-            "蜡笔小新", "小新", "crayon shin",
-            "樱桃小丸子", "小丸子", "chibi maruko",
-            "hello kitty", "凯蒂猫", "kitty",
-            "熊本熊", "kumamon", "部长",
-            "史努比", "snoopy",
-            "加菲猫", "garfield",
-            "米老鼠", "米奇", "mickey", "迪士尼", "disney",
-            "小黄人", "minions",
-            "龙猫", "totoro", "宫崎骏",
-            "千与千寻", "spirited away",
-            "进击的巨人", "attack on titan", "艾伦",
-            "鬼灭之刃", "炭治郎", "祢豆子", "demon slayer",
-            "你的名字", "your name", "新海诚",
-            "死神", "bleach", "一护",
-            "犬夜叉", "inuyasha", "桔梗",
-            "猫和老鼠", "tom and jerry",
+            "乌沙奇", "兔兔", "哆啦a梦", "多啦a梦", "机器猫", "小叮当", "doraemon", "大雄", "静香", "胖虎", "小夫",
+            "柯南", "名侦探柯南", "conan", "毛利兰", "灰原哀", "工藤新一", "怪盗基德",
+            "皮卡丘", "宠物小精灵", "神奇宝贝", "pokemon", "精灵宝可梦", "小智", "小霞", "小刚",
+            "火影忍者", "鸣人", "佐助", "小樱", "naruto", "卡卡西", "佐井", "雏田", "我爱罗", "鼬",
+            "海贼王", "路飞", "索隆", "娜美", "one piece", "山治", "乔巴", "罗宾", "弗兰奇", "布鲁克",
+            "龙珠", "悟空", "贝吉塔", "dragon ball", "悟饭", "特兰克斯", "布尔玛", "比克",
+            "美少女战士", "sailor moon", "月野兔", "水野亚美", "火野丽", "木野真琴", "爱野美奈子",
+            "铁臂阿童木", "astro boy", "阿童木",
+            "蜡笔小新", "小新", "crayon shin", "美伢", "广志", "小白", "风间",
+            "樱桃小丸子", "小丸子", "chibi maruko", "爷爷", "姐姐", "花轮", "丸尾",
+            "hello kitty", "凯蒂猫", "kitty", "美乐蒂", "库洛米", "大眼蛙", "布丁狗",
+            "熊本熊", "kumamon", "部长", "轻松熊", "rilakkuma",
+            "史努比", "snoopy", "查理布朗", "糊涂塌客",
+            "加菲猫", "garfield", "欧迪", "乔恩",
+            "米老鼠", "米奇", "mickey", "迪士尼", "disney", "米妮", "唐老鸭", "高飞", "布鲁托",
+            "小黄人", "minions", "格鲁", "神偷奶爸",
+            "龙猫", "totoro", "宫崎骏", "千寻", "小梅", "草壁月", "无脸男",
+            "千与千寻", "spirited away", "白龙", "汤婆婆", "钱婆婆",
+            "进击的巨人", "attack on titan", "艾伦", "三笠", "阿明", "利威尔", "韩吉",
+            "鬼灭之刃", "炭治郎", "祢豆子", "demon slayer", "善逸", "伊之助", "富冈义勇", "胡蝶忍",
+            "你的名字", "your name", "新海诚", "立花泷", "宫水三叶",
+            "死神", "bleach", "一护", "露琪亚", "井上织姬", "石田雨龙", "茶渡泰虎",
+            "犬夜叉", "inuyasha", "桔梗", "戈薇", "弥勒", "珊瑚", "七宝",
+            "猫和老鼠", "tom and jerry", "汤姆", "杰瑞",
             "哆啦美", "dorami",
             
             # 近期热门动漫
-            "呪术廻戦", "jujutsu kaisen", "虎杖", "五条悟",
-            "间谍过家家", "spy family", "阿尼亚", "anya",
-            "东京喰种", "tokyo ghoul", "金木研",
-            "约定的梦幻岛", "promised neverland", "艾玛",
-            "Re:0", "从零开始", "雷姆", "拉姆",
-            "overwatch", "守望先锋", "dva", "小美",
-            "原神", "genshin", "派蒙", "甘雨", "胡桃",
-            "明日方舟", "arknights", "凯尔希", "陈",
-            "碧蓝航线", "azur lane",
-            "fgo", "fate", "saber", "玛修",
-            "lovelive", "miku", "初音未来", "洛天依",
-            "东方project", "touhou", "博丽灵梦", "雾雨魔理沙"
+            "呪术廻戦", "jujutsu kaisen", "虎杖", "五条悟", "伏黑惠", "钉崎野蔷薇", "夏油杰",
+            "间谍过家家", "spy family", "阿尼亚", "anya", "洛伊德", "约儿", "达米安",
+            "东京喰种", "tokyo ghoul", "金木研", "董香", "利世", "雾岛绚都",
+            "约定的梦幻岛", "promised neverland", "艾玛", "诺曼", "雷", "伊莎贝拉",
+            "Re:0", "从零开始", "雷姆", "拉姆", "艾米莉娅", "486", "菜月昴",
+            "overwatch", "守望先锋", "dva", "小美", "天使", "猎空", "路霸", "源氏",
+            "原神", "genshin", "派蒙", "甘雨", "胡桃", "钟离", "温迪", "雷电将军", "神里绫华", "魈",
+            "明日方舟", "arknights", "凯尔希", "陈", "推进之王", "阿米娅", "德克萨斯", "能天使",
+            "碧蓝航线", "azur lane", "企业", "贝尔法斯特", "高雄", "爱宕",
+            "fgo", "fate", "saber", "玛修", "阿尔托莉雅", "吉尔伽美什", "伊什塔尔", "梅林",
+            "lovelive", "miku", "初音未来", "洛天依", "巡音流歌", "镜音铃", "镜音连",
+            "东方project", "touhou", "博丽灵梦", "雾雨魔理沙", "十六夜咲夜", "红美铃", "帕秋莉",
+            
+            # 更多经典动漫
+            "数码宝贝", "digimon", "八神太一", "石田大和", "亚古兽", "加布兽",
+            "网球王子", "prince of tennis", "越前龙马", "手冢国光", "不二周助",
+            "灌篮高手", "slam dunk", "樱木花道", "流川枫", "赤木刚宪", "三井寿",
+            "足球小将", "captain tsubasa", "大空翼", "若林源三", "日向小次郎",
+            "棒球英豪", "touch", "上杉达也", "浅仓南", "上杉和也",
+            "圣斗士星矢", "saint seiya", "星矢", "紫龙", "冰河", "瞬", "一辉",
+            "北斗神拳", "fist of the north star", "健次郎", "拉奥", "托奇",
+            "城市猎人", "city hunter", "冴羽獠", "槇村香", "野上冴子",
+            "乱马1/2", "ranma", "早乙女乱马", "天道茜", "响良牙",
+            "幽游白书", "yu yu hakusho", "浦饭幽助", "桑原和真", "飞影", "藏马",
+            "全职猎人", "hunter x hunter", "小杰", "奇犽", "库拉皮卡", "雷欧力",
+            "家庭教师", "reborn", "沢田纲吉", "里包恩", "狱寺隼人", "山本武",
+            "银魂", "gintama", "坂田银时", "志村新八", "神乐", "定春",
+            "暗杀教室", "assassination classroom", "杀老师", "潮田渚", "赤羽业",
+            "我的英雄学院", "my hero academia", "绿谷出久", "爆豪胜己", "轰焦冻", "丽日御茶子",
+            "黑子的篮球", "kuroko no basket", "黑子哲也", "火神大我", "黄濑凉太", "绿间真太郎",
+            "食戟之灵", "shokugeki no soma", "幸平创真", "薙切绘里奈", "田所惠",
+            "约会大作战", "date a live", "五河士道", "夜刀神十香", "时崎狂三",
+            "刀剑神域", "sword art online", "桐人", "亚丝娜", "结城明日奈", "西莉卡",
+            "魔法少女小圆", "madoka magica", "鹿目圆", "晓美焰", "美树沙耶加", "佐仓杏子",
+            "凉宫春日的忧郁", "haruhi suzumiya", "凉宫春日", "长门有希", "朝比奈实玖瑠",
+            "轻音少女", "k-on", "平泽唯", "秋山澪", "田井中律", "琴吹紬",
+            "幸运星", "lucky star", "泉此方", "柊镜", "柊司", "高良美幸",
+            "零之使魔", "zero no tsukaima", "路易丝", "平贺才人", "谢丝塔",
+            "完美蓝调", "perfect blue", "今敏", "千年女优",
+            "攻壳机动队", "ghost in the shell", "草薙素子", "巴特", "德古沙",
+            "新世纪福音战士", "evangelion", "碇真嗣", "绫波丽", "明日香", "渚薰"
         ]
 
     
